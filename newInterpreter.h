@@ -40,7 +40,7 @@ class newInterpreter
     char* file_name;
     SMDiagnostic Err;
 
-    PostDominatorTree* pdt = new PostDominatorTree();
+    PostDominatorTree* pdt;
     DominatorTreeAnalysis* dta = new DominatorTreeAnalysis();
     DominatorTree* domtree;
   

@@ -22,8 +22,9 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Transforms/Scalar.h>
-
+#include <llvm/Transforms/Utils.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Value.h>
 #include "newInterpreter.h"
 using namespace llvm;
 using namespace std;
@@ -132,10 +133,12 @@ using namespace std;
 	    {
 		string terValue = swInst->getName().str();
 		string defStr = "(and ";
-		for(SwitchInst::CaseIt i = swInst->case_begin(),e = swInst->case_end(); i != e; i++)
+		// for(SwitchInst::CaseIt i = swInst->case_begin(),e = swInst->case_end(); i != e; i++)
+		for(unsigned int num=0; num<swInst->getNumCases() ;num++)
 		{
-		    string constant = InttoString(i.getCaseValue()->getZExtValue());
-		    if(i.getCaseSuccessor() == botbb)
+			auto Case = *SwitchInst::ConstCaseIt::fromSuccessorIndex(swInst, num);
+		    string constant = InttoString(Case.getCaseValue()->getZExtValue());
+		    if(swInst->getSuccessor(num) == botbb)
 		    {
 			s = "(= $"+terValue+" "+constant+") " + str;
 			break;
@@ -179,33 +182,33 @@ using namespace std;
     }
 
 
-    void newInterpreter::DominateInfo(Function* func)
-    {
-	pdt->runOnFunction(*func);
-	DominatorTree dt = dta->run(*func);
-	runToposort(*func);
-	string domstr;
-	string pdomstr;
-	string cdstr;
-	for(auto funcite=func->begin();funcite!=func->end();funcite++)
-	{
-	    BasicBlock* bb = dyn_cast<BasicBlock>(funcite);
+    // void newInterpreter::DominateInfo(Function* func)
+    // {
+	// pdt->runOnFunction(*func);
+	// DominatorTree dt = dta->run(*func);
+	// runToposort(*func);
+	// string domstr;
+	// string pdomstr;
+	// string cdstr;
+	// for(auto funcite=func->begin();funcite!=func->end();funcite++)
+	// {
+	//     BasicBlock* bb = dyn_cast<BasicBlock>(funcite);
 	    
-	    if(bb->getName().str()!="entry")
-		domstr = domstr + bb->getName().str()+"  Idom:  "+dt.getNode(bb)->getIDom()->getBlock()->getName().str()+'\n';
-	    else
-		domstr =domstr + "entry  Idom:  Null\n";
+	//     if(bb->getName().str()!="entry")
+	// 	domstr = domstr + bb->getName().str()+"  Idom:  "+dt.getNode(bb)->getIDom()->getBlock()->getName().str()+'\n';
+	//     else
+	// 	domstr =domstr + "entry  Idom:  Null\n";
 	    
-	    if(bb->getTerminator()->getOpcode()!=Instruction::Ret)
-		pdomstr = pdomstr + bb->getName().str()+"  Pdom:  "+pdt->getNode(bb)->getIDom()->getBlock()->getName().str()+'\n';
-	    else
-		pdomstr = pdomstr + bb->getName().str()+"  Pdom:  Null\n";
+	//     if(bb->getTerminator()->getOpcode()!=Instruction::Ret)
+	// 	pdomstr = pdomstr + bb->getName().str()+"  Pdom:  "+pdt->getNode(bb)->getIDom()->getBlock()->getName().str()+'\n';
+	//     else
+	// 	pdomstr = pdomstr + bb->getName().str()+"  Pdom:  Null\n";
 	    
 	    
-	}
-	outs()<<"DominateInfo:\n"<<domstr<<"Post-DominateInfo\n"<<pdomstr;
+	// }
+	// outs()<<"DominateInfo:\n"<<domstr<<"Post-DominateInfo\n"<<pdomstr;
 	
-    }
+    // }
     
     void newInterpreter::TraceCMPs(BasicBlock* top,BasicBlock* tracebot,BasicBlock* bot,BasicBlock* incomingBB,BasicBlock* tail,string str,RoadInfo& info)
     {
@@ -252,10 +255,11 @@ using namespace std;
 	    {
 		string terValue = swInst->getName().str();
 		string defStr = "(and ";
-		for(SwitchInst::CaseIt i = swInst->case_begin(),e = swInst->case_end(); i != e; i++)
+		for(unsigned int num=0; num<swInst->getNumCases() ;num++)
 		{
-		    string constant = InttoString(i.getCaseValue()->getZExtValue());
-		    if(i.getCaseSuccessor() == bot)
+			auto Case = *SwitchInst::ConstCaseIt::fromSuccessorIndex(swInst, num);
+		    string constant = InttoString(Case.getCaseValue()->getZExtValue());
+		    if(swInst->getSuccessor(num) == bot)
 		    {
 			s = "(= $"+terValue+" "+constant+") " + str;
 			break;
@@ -309,10 +313,10 @@ using namespace std;
     bool newInterpreter::recursiveDFSToposort( BasicBlock* BB)
     {
 	ColorMap[BB]=newInterpreter::grey;
-	 TerminatorInst *Tinst = BB->getTerminator();
-	for(unsigned int i=0,NSucc=Tinst->getNumSuccessors();i<NSucc;i++)
+	unsigned int succ_num = BB->getTerminator()->getNumSuccessors();
+	for(unsigned int i=0,NSucc=succ_num;i<NSucc;i++)
 	{
-	    BasicBlock *Succ = Tinst->getSuccessor(i);
+	    BasicBlock *Succ = BB->getTerminator()->getSuccessor(i);
 	    Color SuccColor = ColorMap[Succ];
 	    if(SuccColor == newInterpreter::white)
 	    {
@@ -495,8 +499,7 @@ using namespace std;
 	    BasicBlock* header = L->getHeader();
 	    
 	    latch = L->getLoopLatch();
-	    TerminatorInst* latch_end = latch->getTerminator();
-	    BranchInst* latch_term = dyn_cast<BranchInst>(latch_end);
+	    BranchInst* latch_term = dyn_cast<BranchInst>(latch->getTerminator());
 	    
 	    SmallVector<BasicBlock*,8> bb_Exits;
 	    L->getExitBlocks(bb_Exits);
@@ -563,7 +566,7 @@ using namespace std;
 	    builder.SetInsertPoint(latch);
 	    builder.CreateBr(exit_bb);
 	    
-	    func->dump();
+	    // func->dump();
 
 	}
 	skipSMT_continue_unroll = false;
@@ -648,7 +651,7 @@ using namespace std;
 		    continue;
 		}else
 		{
-		    inst_i->dump();
+		    // inst_i->dump();
 		    outs()<<";this type of varible had not defined ...\n";
 		}
 		decla_formulas = decla_formulas+s;
@@ -674,8 +677,9 @@ using namespace std;
 // 	full_formula = full_formula + latch_cond_formula;
 // 	outs()<<latch_cond_formula<<'\n';
 	
-	pdt->runOnFunction(*func);
-	DominatorTree dt = dta->run(*func);
+	pdt = new PostDominatorTree(*func);
+	llvm::AnalysisManager< llvm::Function > am;
+	DominatorTree dt = dta->run(*func,am);
 	domtree = &dt;
 	runToposort(*func);
 	
